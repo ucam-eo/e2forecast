@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "e2forecast"
+version = "1.0.0"
+description = "E2Forecast: forecasting foundation-model embeddings with joint probability estimation and generation"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "torch>=2.1",
+]
+
+[project.optional-dependencies]
+geo = ["rasterio>=1.3", "pyproj>=3.5"]
+inr = ["webdataset>=0.2.86", "pandas>=2.0", "scikit-learn>=1.3", "matplotlib>=3.7", "cartopy>=0.22", "shapely>=2.0"]
+plots = ["matplotlib>=3.7", "pillow>=10"]
+all = ["e2forecast[geo,inr,plots]"]
+
+[tool.setuptools.packages.find]
+include = ["e2forecast*"]
