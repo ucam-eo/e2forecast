@@ -4,9 +4,10 @@
 
 ### Forecasting Earth's Surface in Embedding Space
 
-**Jingtao Li · Sadiq Jaffer · Anil Madhavapeddy · et al.**
+**Jingtao Li**<sup>1</sup> · **Sadiq Jaffer**<sup>1</sup> · **Anil Madhavapeddy**<sup>1</sup> · **Pedro Sousa**<sup>1</sup> · **Anthony Ortiz**<sup>2</sup><br>
+**Kyle Gao**<sup>3</sup> · **Zhengpeng Feng**<sup>1</sup> · **Yanfei Zhong**<sup>4</sup> · **Srinivasan Keshav**<sup>1</sup>
 
-University of Cambridge
+<sup>1</sup>University of Cambridge · <sup>2</sup>Microsoft AI for Good Research Lab · <sup>3</sup>Aalto University · <sup>4</sup>Wuhan University
 
 [![Code](https://img.shields.io/badge/GitHub-ucam--eo%2Fe2forecast-181717?logo=github)](https://github.com/ucam-eo/e2forecast)
 [![Models](https://img.shields.io/badge/%F0%9F%A4%97%20Models-E2Forecast-ffcc4d)](https://huggingface.co/JingtaoLi/E2Forecast)
@@ -270,7 +271,8 @@ free for research and other non-commercial use, with attribution.
 ```bibtex
 @article{li2026e2forecast,
   title  = {Forecasting Earth's Surface in Embedding Space},
-  author = {Li, Jingtao and Jaffer, Sadiq and Madhavapeddy, Anil and others},
+  author = {Li, Jingtao and Jaffer, Sadiq and Madhavapeddy, Anil and Sousa, Pedro and Ortiz, Anthony and
+            Gao, Kyle and Feng, Zhengpeng and Zhong, Yanfei and Keshav, Srinivasan},
   year   = {2026}
 }
 ```
