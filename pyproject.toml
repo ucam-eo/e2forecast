@@ -7,6 +7,7 @@ name = "e2forecast"
 version = "1.0.0"
 description = "E2Forecast: forecasting foundation-model embeddings with joint probability estimation and generation"
 readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.24",

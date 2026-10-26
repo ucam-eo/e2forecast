@@ -166,6 +166,11 @@ point = model.point_forecast(**conditions)                               # mu / 
 ensemble = [model.sample(steps=10, **conditions) for _ in range(10)]     # J = 10 ensemble forecasts
 ```
 
+## License
+
+Code, checkpoints and data are released under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
+(attribution, non-commercial use only); see `LICENSE`.
+
 ## Citation
 
 ```bibtex
