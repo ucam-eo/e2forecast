@@ -109,13 +109,13 @@ ensemble = [model.sample(steps=10, **conditions) for _ in range(10)]  # J = 10 e
 
 ## 📦 Checkpoints
 
-| file | experiment | embedding | history | selection |
-| --- | --- | --- | --- | --- |
-| `s1_embed.pt` | S1_Embed forecasting | OlmoEarth-nano, 128-D | 7 observations | last epoch (600) |
-| `s2_embed.pt` | S2_Embed forecasting | Prithvi-EO-2.0-300M, 1024-D | 37 observations | last epoch (72) |
-| `gsa.pt` | GSA anomaly change detection | OlmoEarth-nano, 128-D | 3 observations | last epoch (300) |
-| `inr.pt` | INR on S2-100K | SatCLIP, 256-D | none | best validation epoch (108) |
-| `inr_date.pt` | INR with query date on SSL4EO-S12 | SatCLIP, 256-D | none | best validation epoch (288) |
+| checkpoint | experiment | embedding | history |
+| --- | --- | --- | --- |
+| [`s1_embed.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/s1_embed.pt) | S1_Embed forecasting | OlmoEarth-nano, 128-D | 7 observations |
+| [`s2_embed.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/s2_embed.pt) | S2_Embed forecasting | Prithvi-EO-2.0-300M, 1024-D | 37 observations |
+| [`gsa.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/gsa.pt) | GSA anomaly change detection | OlmoEarth-nano, 128-D | 3 observations |
+| [`inr.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/inr.pt) | INR on S2-100K | SatCLIP, 256-D | none |
+| [`inr_date.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/inr_date.pt) | INR with query date on SSL4EO-S12 | SatCLIP, 256-D | none |
 
 Every checkpoint stores its model configuration, so each script rebuilds the network from the file alone.
 
