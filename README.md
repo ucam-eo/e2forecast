@@ -1,24 +1,204 @@
+<div align="center">
+
 # E²Forecast
 
-Code for **Forecasting How Earth's Surface Changes in Embedding Space**.
+### Forecasting How Earth's Surface Changes in Embedding Space
 
-E²Forecast forecasts the embedding of a location at any query date from an irregular history of
-foundation-model embeddings. One masked Transformer pass gives two branches:
+**Jingtao Li · Sadiq Jaffer · Anil Madhavapeddy · et al.**
 
-- a **probability branch**: a diagonal Gaussian `N(μ, diag(σ²))`, used for the point forecast `μ/‖μ‖` and the per-dimension uncertainty;
-- a **generation branch**: a rectified flow with x-prediction, used for ensemble forecasts in `S` Euler steps.
+University of Cambridge
 
-The same network detects anomalous change: it compares a new observation with the Gaussian forecast and with the
-closest ensemble forecast. With an empty history it becomes an implicit neural representation (INR) of the
-global embedding field.
+[![Code](https://img.shields.io/badge/GitHub-ucam--eo%2Fe2forecast-181717?logo=github)](https://github.com/ucam-eo/e2forecast)
+[![Models](https://img.shields.io/badge/%F0%9F%A4%97%20Models-E2Forecast-ffcc4d)](https://huggingface.co/JingtaoLi/E2Forecast)
+[![Data](https://img.shields.io/badge/%F0%9F%A4%97%20Data-E2Forecast--data-ffcc4d)](https://huggingface.co/datasets/JingtaoLi/E2Forecast-data)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
+<img src="assets/cambridge_2025.gif" width="560" alt="E2Forecast forecasts of Cambridge through 2025 next to the observed embeddings">
+
+<em>Trained on 2024 and given only January 2025 as context, E²Forecast forecasts the OlmoEarth embedding of
+Cambridge for any date of 2025. Left: forecast; right: what the satellite saw.</em>
+
+</div>
+
+---
+
+Satellite images are noisy: clouds, shadows and sensor artefacts make pixel-space forecasters spend their capacity on
+low-level signal. **E²Forecast forecasts in the embedding space of Earth foundation models instead.** It takes an
+irregular history of embeddings from any sensor or foundation model and forecasts the embedding at **any query date**,
+both as a point forecast with per-dimension uncertainty and as an ensemble of plausible futures.
+
+## ✨ Highlights
+
+- 🛰️ **Any sensor, any foundation model, any date.** One token space handles irregular histories from Sentinel-1
+  and Sentinel-2, and embeddings from OlmoEarth, Prithvi-EO-2.0 and SatCLIP.
+- 🎯 **Two branches in one pass.** A probability branch gives `μ, σ`; a rectified-flow branch generates `J`
+  ensemble forecasts in `S` Euler steps.
+- 📉 **Embeddings beat pixels.** Moving forecasters from pixels to embeddings **halves the cosine distance
+  (0.20 → 0.10)** and cuts overconfidence (std of z **2.63 → 1.22**).
+- 🔥 **Anomaly change detection for free.** No labels and no retraining: comparing a new observation with the
+  forecasts raises F₁ on the global GSA benchmark from **41.58 to 48.70**.
+- 🌍 **A global implicit neural representation.** With an empty history, E²Forecast maps a location (and date)
+  to an embedding. It is the only location encoder that is positive on all five region-disjoint regression tasks
+  (average R² **0.4569** vs. 0.0593 for the best baseline).
+
+## 🧭 Method
+
+<p align="center"><img src="assets/overview.png" width="100%" alt="E2Forecast overview"></p>
+
+**(a)** Images are embedded by an Earth foundation model. **(b)** Location, history (embedding + date) and query
+date tokens feed one masked Transformer. The probability-estimation tokens `h_μ, h_σ` cannot attend to the
+generation tokens (flow time, noisy target, query), so both branches train jointly in one pass with
+`L = L_nll + L_flow`. **(c)** At inference the same network gives a point forecast `μ/‖μ‖` with uncertainty `σ`,
+or `J` ensemble forecasts. **(d)** A new observation that is far from both the Gaussian forecast and every ensemble
+member, measured in units of `σ`, is an anomalous change.
+
+## 🖼️ Results
+
+### Forecasting in embedding space keeps what matters
+
+<p align="center"><img src="assets/image_vs_embedding.jpg" width="100%" alt="Image-space vs embedding-space forecasting on S2_Embed"></p>
+
+A forecast Sentinel-2 image can *look* right and still lose the information the foundation model extracts: once the
+best image-space forecast is converted to embeddings, its error is large everywhere. E²Forecast forecasts the
+embeddings directly, and its error map stays close to zero.
+
+### Anomaly change detection without labels
+
+<p align="center"><img src="assets/gsa_anomaly.jpg" width="78%" alt="GSA anomaly maps"></p>
+
+The forecast embedding matches the observed one everywhere except where the event happened, so the anomaly score
+lights up dam breaks, burned areas, fire points, marine debris, oil leaks and water blooms. One model covers all
+six categories, with no category-specific design.
+
+### A global field of embeddings, and its seasons
+
+<p align="center"><img src="assets/global_field.jpg" width="100%" alt="Global embedding field"></p>
+
+Queried on a 0.5° grid and projected to RGB, the E²Forecast field follows coastlines, ice sheets, deserts and the
+tropical and boreal forests of the 2025 land-cover map, although it never saw a land-cover label. With a query-date
+token, the same model also learns the seasons; after removing each location's annual mean, the Northern and
+Southern Hemispheres change in antiphase:
+
+<p align="center"><img src="assets/global_monthly.jpg" width="100%" alt="Monthly global embedding field"></p>
+
+## 🚀 Getting started
+
+```bash
+git clone https://github.com/ucam-eo/e2forecast.git && cd e2forecast
+conda create -n e2forecast python=3.12 && conda activate e2forecast
+pip install torch                 # pick the build that matches your CUDA version
+pip install -r requirements.txt && pip install -e .
+
+hf download JingtaoLi/E2Forecast --local-dir checkpoints                       # 5 checkpoints, ~0.5 GB
+hf download JingtaoLi/E2Forecast-data --repo-type dataset --local-dir data     # S1_Embed, S2_Embed, INR (~67 GB)
 ```
-[location | C observations | query date | h_μ | h_σ | flow time t | noisy target z_t | h_query]
- └────────────── probability estimation ──────────────┘ └──────────── generation ────────────┘
-          (cannot attend to the generation tokens)
+
+```python
+import torch
+from e2forecast import load_model, relative_dates
+
+model, checkpoint = load_model("checkpoints/s1_embed.pt", torch.device("cuda"))
+obs_dates, query_date = relative_dates(context_doys, query_doy)     # (B, C) and (B,) day of year
+conditions = dict(obs=context,                                      # (B, C, D) L2-normalised history
+                  obs_dates=obs_dates, query_date=query_date,
+                  lonlat=lonlat)                                    # (B, 2) degrees
+mu, sigma = model.gaussian(**conditions)                            # probability branch
+point = model.point_forecast(**conditions)                          # mu / ||mu||
+ensemble = [model.sample(steps=10, **conditions) for _ in range(10)]  # J = 10 ensemble forecasts
 ```
 
-## Repository layout
+## 📦 Checkpoints
+
+| file | experiment | embedding | history | selection |
+| --- | --- | --- | --- | --- |
+| `s1_embed.pt` | S1_Embed forecasting | OlmoEarth-nano, 128-D | 7 observations | last epoch (600) |
+| `s2_embed.pt` | S2_Embed forecasting | Prithvi-EO-2.0-300M, 1024-D | 37 observations | last epoch (72) |
+| `gsa.pt` | GSA anomaly change detection | OlmoEarth-nano, 128-D | 3 observations | last epoch (300) |
+| `inr.pt` | INR on S2-100K | SatCLIP, 256-D | none | best validation epoch (108) |
+| `inr_date.pt` | INR with query date on SSL4EO-S12 | SatCLIP, 256-D | none | best validation epoch (288) |
+
+Every checkpoint stores its model configuration, so each script rebuilds the network from the file alone.
+
+## 🔁 Reproducing the paper
+
+All commands run from the repository root, with the data laid out as downloaded from HuggingFace.
+
+<details>
+<summary><b>Forecasting on S1_Embed and S2_Embed</b></summary>
+
+```bash
+python scripts/s1_embed/evaluate.py --data-root data/S1_Embed --checkpoint checkpoints/s1_embed.pt --output-dir results/s1_embed
+python scripts/s2_embed/evaluate.py --data-root data/S2_Embed --checkpoint checkpoints/s2_embed.pt --output-dir results/s2_embed \
+    --samples-limit 100000
+```
+
+The Gaussian branch gives the mean and std of `z`, the point cosine distance and the CRPS (closed form). `J = 10`
+ensemble forecasts with `S = 10` Euler steps give the ensemble cosine distance (the closest member). S1_Embed uses
+all 1,000,000 test items; S2_Embed uses the first 100,000 test samples.
+
+| | mean z | std z | point cos. ↓ | ensemble cos. ↓ | CRPS ↓ |
+| --- | --- | --- | --- | --- | --- |
+| S1_Embed | −0.0005 | 1.1376 | 0.1081 | 0.0911 | 0.0213 |
+| S2_Embed | 0.0006 | 1.0250 | 0.0667 | 0.0613 | 0.0038 |
+
+Training uses the paper settings by default:
+
+```bash
+python scripts/s1_embed/train.py --data-root data/S1_Embed --output-dir runs/s1_embed   # 600 epochs, batch 256
+python scripts/s2_embed/train.py --data-root data/S2_Embed --output-dir runs/s2_embed   # 72 epochs, batch 64, 8 heads
+```
+
+</details>
+
+<details>
+<summary><b>Anomaly change detection on GSA</b></summary>
+
+```bash
+python scripts/gsa/train.py --embedding-root data/GSA/embeddings_patch5 --output-dir runs/gsa
+python scripts/gsa/infer.py --checkpoint checkpoints/gsa.pt --embedding-root data/GSA/embeddings_patch5 \
+    --label-root data/GSA/original --output-dir results/gsa
+python scripts/gsa/evaluate.py --results-root results/gsa --label-root data/GSA/original
+```
+
+For every event, the last image is the observation and the three images before it are the context. The score map
+holds `a² = min(‖(e−μ)/σ‖², min_j ‖(e−ê_j)/σ‖²)` with `J = S = 10`. It is computed on the 50 m embedding grid and
+bilinearly upsampled to the 10 m labels. Evaluation follows HyperFree / ESIA: false positives get weight 0.5 in the
+precision, one threshold is tuned per category, and event F₁ is averaged within each category and then over
+categories. Expected averages: recall 65.48, precision 48.84, F₁ 48.70.
+
+The GSA embeddings are not released yet; `data/gsa_manifest.json` lists the 55 events.
+
+</details>
+
+<details>
+<summary><b>E²Forecast as an implicit neural representation</b></summary>
+
+```bash
+python scripts/inr/train.py --shards 'data/INR/satclip_s2_100k/satclip_embeddings_location_{000493..000542}.tar' \
+    --output-dir runs/inr
+python scripts/inr/downstream.py --checkpoint checkpoints/inr.pt --data-dir data/downstream --output results/inr_downstream.json
+python scripts/inr/plot_global_field.py --checkpoint checkpoints/inr.pt --output figures/global_field.png
+
+# date-conditioned model (the SSL4EO-S12 shards are not released yet)
+python scripts/inr/train.py --query-date --shards '<ssl4eo_shards>_{000000..000492}.tar' --output-dir runs/inr_date
+python scripts/inr/plot_global_monthly.py --checkpoint checkpoints/inr_date.pt --output figures/global_monthly.png
+```
+
+The probe regresses each target from the normalised Gaussian mean at the sample's location. Splits are
+region-disjoint (30/10/60 % latitude or longitude bands with 0.25° guard gaps), and the probe is an MLP with one
+hidden layer of width 32. The probe-selection rule is the same as for every baseline in the paper (see
+`scripts/inr/downstream.py`). `data/downstream` holds `labels_population.csv` and `labels_elevation.csv` from
+[SatCLIP](https://github.com/microsoft/satclip) and `stationDataAll.csv` from Hooker et al. (2018); the
+California Housing data is fetched by scikit-learn.
+
+| population | elevation | temperature | house value | income | **average** |
+| --- | --- | --- | --- | --- | --- |
+| 0.6064 | 0.1687 | 0.7628 | 0.2183 | 0.5282 | **0.4569** |
+
+</details>
+
+<details>
+<summary><b>Repository layout</b></summary>
 
 ```
 e2forecast/                 installable package
@@ -37,141 +217,17 @@ scripts/
   inr/                      train.py, evaluate.py, downstream.py, plot_global_field.py, plot_global_monthly.py
   export_checkpoint.py      convert checkpoints of the original research code to the release format
 data/gsa_manifest.json      the 55 GSA events (relative paths, dates, bounds)
+assets/                     README figures
 ```
 
-## Installation
+</details>
 
-```bash
-conda create -n e2forecast python=3.12 && conda activate e2forecast
-pip install torch            # pick the build that matches your CUDA version
-pip install -r requirements.txt
-pip install -e .
-```
+## 📜 License
 
-## Checkpoints
+Code, checkpoints and data are released under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/):
+free for research and other non-commercial use, with attribution.
 
-| file | experiment | paper | selection |
-| --- | --- | --- | --- |
-| `s1_embed.pt` | S1_Embed, 7 context observations, 128-D | forecasting table, S1_Embed | last epoch (600) |
-| `s2_embed.pt` | S2_Embed, 37 context observations, 1024-D | forecasting table, S2_Embed | last epoch (72) |
-| `gsa.pt` | GSA, 3 context observations, 128-D | GSA table | last epoch (300) |
-| `inr.pt` | INR on S2-100K SatCLIP embeddings, 256-D | INR regression table, global-field figure | best validation epoch (108) |
-| `inr_date.pt` | INR + query date on SSL4EO-S12, 256-D | monthly global-field figure | best validation epoch (288) |
-
-Place the files in `checkpoints/`. Each one stores its model configuration, so every script rebuilds the network
-from the checkpoint alone.
-
-## Data
-
-Checkpoints and data are on HuggingFace: https://huggingface.co/JingtaoLi/E2Forecast and https://huggingface.co/datasets/JingtaoLi/E2Forecast-data (S1_Embed, S2_Embed, INR S2-100K shards).
-Download them into `checkpoints/` and `data/`:
-
-```bash
-hf download JingtaoLi/E2Forecast --local-dir checkpoints
-hf download JingtaoLi/E2Forecast-data --repo-type dataset --local-dir data
-```
-
-The GSA data and the dated SSL4EO-S12 shards (used for `inr_date.pt`) are not released yet.
-
-| experiment | expected layout |
-| --- | --- |
-| S1_Embed | `<root>/embeddings/` (OLMoEarth-nano patch-5 rasters per site and year, `embedding_manifest.json`) and `<root>/config/` (`split.json`, `{val,test}_config.json`, `*_items.npz`) |
-| S2_Embed | `<root>/embeddings_prithvi_eo_2_300M/S2_<patch>.npy`, `<root>/benchmark_config/` (`config.json`, split, `{val,test}_samples.npz`) and `<root>/PASTIS/metadata.geojson` |
-| GSA | patch-5 OLMoEarth-nano embedding rasters (`--embedding-root`, paths as in `data/gsa_manifest.json`) and the original 10 m GSA folders with `*label*.tif` (`--label-root`) |
-| INR | webdataset shards with `.npy` (SatCLIP embedding) and `.txt` (`lon,lat[,date]`); downstream CSVs `labels_population.csv`, `labels_elevation.csv` (SatCLIP) and `stationDataAll.csv` (Hooker et al., 2018) |
-
-## Reproducing the paper
-
-All commands run from the repository root.
-
-### Forecasting on S1_Embed and S2_Embed
-
-```bash
-python scripts/s1_embed/evaluate.py --data-root data/S1_Embed --checkpoint checkpoints/s1_embed.pt \
-    --output-dir results/s1_embed
-python scripts/s2_embed/evaluate.py --data-root data/S2_Embed --checkpoint checkpoints/s2_embed.pt \
-    --output-dir results/s2_embed --samples-limit 100000
-```
-
-The Gaussian branch gives the mean and std of `z`, the point cosine distance and the CRPS (closed form). `J = 10`
-ensemble forecasts with `S = 10` Euler steps give the ensemble cosine distance (closest member). S1_Embed uses all
-1,000,000 test items. S2_Embed uses the first 100,000 of the 1,000,000 test samples.
-
-| | mean z | std z | point cos. | ensemble cos. | CRPS |
-| --- | --- | --- | --- | --- | --- |
-| S1_Embed | −0.0005 | 1.1382 | 0.1087 | 0.0911 | 0.0213 |
-| S2_Embed | 0.0006 | 1.0250 | 0.0667 | 0.0613 | 0.0038 |
-
-Training (paper settings are the defaults):
-
-```bash
-python scripts/s1_embed/train.py --data-root data/S1_Embed --output-dir runs/s1_embed      # 600 epochs, batch 256
-python scripts/s2_embed/train.py --data-root data/S2_Embed --output-dir runs/s2_embed      # 72 epochs, batch 64, 8 heads
-```
-
-### Anomaly change detection on GSA
-
-```bash
-python scripts/gsa/train.py --embedding-root data/GSA/embeddings_patch5 --output-dir runs/gsa
-python scripts/gsa/infer.py --checkpoint checkpoints/gsa.pt --embedding-root data/GSA/embeddings_patch5 \
-    --label-root data/GSA/original --output-dir results/gsa
-python scripts/gsa/evaluate.py --results-root results/gsa --label-root data/GSA/original
-```
-
-For every event, the last image is the observation and the three images before it are the context. The score map
-holds `a² = min(‖(e−μ)/σ‖², min_j ‖(e−ê_j)/σ‖²)` with `J = S = 10`. It is computed on the 50 m embedding grid and
-bilinearly upsampled to the 10 m labels. Evaluation follows HyperFree / ESIA:
-
-- false positives get weight 0.5 in the precision;
-- one threshold is tuned per category;
-- event F1 is averaged within each category, then over categories.
-
-Expected averages: recall 65.48, precision 48.84, F1 48.70.
-
-### E²Forecast as an INR
-
-```bash
-python scripts/inr/train.py --shards 'data/INR/satclip_s2_100k/satclip_embeddings_location_{000493..000542}.tar' --output-dir runs/inr
-python scripts/inr/downstream.py --checkpoint checkpoints/inr.pt --data-dir data/downstream --output results/inr_downstream.json
-python scripts/inr/plot_global_field.py --checkpoint checkpoints/inr.pt --output figures/global_field.png
-
-python scripts/inr/train.py --query-date --shards 'data/satclip/satclip_embeddings_location_{000000..000492}.tar' \
-    --output-dir runs/inr_date
-python scripts/inr/plot_global_monthly.py --checkpoint checkpoints/inr_date.pt --output figures/global_monthly.png
-```
-
-The downstream probe regresses each target from the normalised Gaussian mean at the sample's location:
-
-- splits are region-disjoint: 30/10/60 % latitude (or longitude) bands with 0.25° guard gaps;
-- the probe is an MLP with one hidden layer of width 32;
-- the probe-selection rule is the same as for every baseline in the INR table (see `scripts/inr/downstream.py`).
-
-Expected R²:
-
-| population | elevation | temperature | house value | income | average |
-| --- | --- | --- | --- | --- | --- |
-| 0.6064 | 0.1687 | 0.7628 | 0.2183 | 0.5282 | 0.4569 |
-
-## Using the model
-
-```python
-import torch
-from e2forecast import load_model, relative_dates
-
-model, checkpoint = load_model("checkpoints/s1_embed.pt", torch.device("cuda"))
-obs_dates, query_date = relative_dates(context_doys, query_doy)          # (B, C) and (B,) day of year
-conditions = dict(obs=context, obs_dates=obs_dates, query_date=query_date, lonlat=lonlat)  # context: (B, C, D), L2-normalised
-mu, sigma = model.gaussian(**conditions)                                 # probability branch
-point = model.point_forecast(**conditions)                               # mu / ||mu||
-ensemble = [model.sample(steps=10, **conditions) for _ in range(10)]     # J = 10 ensemble forecasts
-```
-
-## License
-
-Code, checkpoints and data are released under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
-(attribution, non-commercial use only); see `LICENSE`.
-
-## Citation
+## 📝 Citation
 
 ```bibtex
 @article{li2026e2forecast,
