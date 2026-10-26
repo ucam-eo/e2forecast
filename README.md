@@ -2,7 +2,7 @@
 
 # E²Forecast
 
-### Forecasting How Earth's Surface Changes in Embedding Space
+### Forecasting Earth's Surface in Embedding Space
 
 **Jingtao Li · Sadiq Jaffer · Anil Madhavapeddy · et al.**
 
@@ -269,7 +269,7 @@ free for research and other non-commercial use, with attribution.
 
 ```bibtex
 @article{li2026e2forecast,
-  title  = {Forecasting How Earth's Surface Changes in Embedding Space},
+  title  = {Forecasting Earth's Surface in Embedding Space},
   author = {Li, Jingtao and Jaffer, Sadiq and Madhavapeddy, Anil and others},
   year   = {2026}
 }
