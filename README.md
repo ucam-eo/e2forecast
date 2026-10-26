@@ -89,8 +89,7 @@ conda create -n e2forecast python=3.12 && conda activate e2forecast
 pip install torch                 # pick the build that matches your CUDA version
 pip install -r requirements.txt && pip install -e .
 
-hf download JingtaoLi/E2Forecast --local-dir checkpoints                       # 5 checkpoints, ~0.5 GB
-hf download JingtaoLi/E2Forecast-data --repo-type dataset --local-dir data     # S1_Embed, S2_Embed, INR (~67 GB)
+hf download JingtaoLi/E2Forecast --local-dir checkpoints     # 5 checkpoints, ~0.5 GB
 ```
 
 ```python
@@ -119,9 +118,50 @@ ensemble = [model.sample(steps=10, **conditions) for _ in range(10)]  # J = 10 e
 
 Every checkpoint stores its model configuration, so each script rebuilds the network from the file alone.
 
+## 📥 Data
+
+All released data is in the HuggingFace dataset
+[**JingtaoLi/E2Forecast-data**](https://huggingface.co/datasets/JingtaoLi/E2Forecast-data). Download only the
+folders you need, into `data/`:
+
+| to reproduce | download | size | command |
+| --- | --- | --- | --- |
+| S1_Embed forecasting | `S1_Embed/` | 48 GB | `hf download JingtaoLi/E2Forecast-data --repo-type dataset --include "S1_Embed/*" --local-dir data` |
+| S2_Embed forecasting | `S2_Embed/` | 15 GB | `hf download JingtaoLi/E2Forecast-data --repo-type dataset --include "S2_Embed/*" --local-dir data` |
+| INR training | `INR/` | 97 MB | `hf download JingtaoLi/E2Forecast-data --repo-type dataset --include "INR/*" --local-dir data` |
+| INR downstream probes | third-party, see below | 10 MB | — |
+| GSA anomaly detection | not released yet | — | — |
+
+Evaluating a released checkpoint only needs that experiment's data plus the checkpoint; training needs the same data.
+
+The INR downstream probes use third-party data that we do not redistribute. Put these files in `data/downstream/`:
+
+- `labels_population.csv` and `labels_elevation.csv` from the [SatCLIP](https://github.com/microsoft/satclip) downstream tasks;
+- `stationDataAll.csv`, the station air temperatures of Hooker et al. (2018), [download](https://springernature.figshare.com/ndownloader/files/12609182);
+- California Housing is fetched automatically by scikit-learn.
+
+The GSA embeddings and the dated SSL4EO-S12 shards (used to train `inr_date.pt`) will be released later; the
+released `gsa.pt` and `inr_date.pt` can be used without them.
+
+After downloading, `data/` looks like:
+
+```
+data/
+├── S1_Embed/
+│   ├── embeddings/            <site>/<year>/<timestamp>_..._128d.tif, embedding_manifest.json
+│   └── config/                split.json, {val,test}_config.json, {val,test}_config_items.npz
+├── S2_Embed/
+│   ├── embeddings_prithvi_eo_2_300M/   S2_<patch>.npy, (T, 8, 8, 1024) float16
+│   ├── benchmark_config/      config.json, split_1461_486_486.json, {val,test}_samples.npz
+│   └── PASTIS/metadata.geojson
+├── INR/satclip_s2_100k/       satclip_embeddings_location_{000493..000542}.tar
+├── downstream/                labels_population.csv, labels_elevation.csv, stationDataAll.csv
+└── gsa_manifest.json          (in the repository) the 55 GSA events
+```
+
 ## 🔁 Reproducing the paper
 
-All commands run from the repository root, with the data laid out as downloaded from HuggingFace.
+All commands run from the repository root, with the data laid out as in [Data](#-data).
 
 <details>
 <summary><b>Forecasting on S1_Embed and S2_Embed</b></summary>
@@ -187,9 +227,7 @@ python scripts/inr/plot_global_monthly.py --checkpoint checkpoints/inr_date.pt -
 The probe regresses each target from the normalised Gaussian mean at the sample's location. Splits are
 region-disjoint (30/10/60 % latitude or longitude bands with 0.25° guard gaps), and the probe is an MLP with one
 hidden layer of width 32. The probe-selection rule is the same as for every baseline in the paper (see
-`scripts/inr/downstream.py`). `data/downstream` holds `labels_population.csv` and `labels_elevation.csv` from
-[SatCLIP](https://github.com/microsoft/satclip) and `stationDataAll.csv` from Hooker et al. (2018); the
-California Housing data is fetched by scikit-learn.
+`scripts/inr/downstream.py`). The probe data goes in `data/downstream/` (see [Data](#-data)).
 
 | population | elevation | temperature | house value | income | **average** |
 | --- | --- | --- | --- | --- | --- |
