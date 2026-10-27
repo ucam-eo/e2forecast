@@ -40,6 +40,9 @@ class Event:
     def day_of_year(self, step: int) -> int:
         return date.fromisoformat(self.dates[step]).timetuple().tm_yday
 
+    def year(self, step: int) -> int:
+        return date.fromisoformat(self.dates[step]).year
+
 
 def load_manifest(path: Path, embedding_root: Path) -> list[Event]:
     payload = json.loads(Path(path).read_text())
@@ -115,10 +118,9 @@ class Sampler:
             all_cols[indices] = self.rng.integers(col_start, min(col_start + self.spatial_block, event.width), len(indices))
         obs = np.empty((batch, CONTEXT_COUNT, EMBED_DIM), np.float32)
         target = np.empty((batch, EMBED_DIM), np.float32)
-        obs_dates = np.empty((batch, CONTEXT_COUNT, 2), np.float32)  # (relative order -3..-1, day of year)
-        query_date = np.zeros((batch, 2), np.float32)  # (0, day of year)
+        obs_doys, obs_years = np.empty((batch, CONTEXT_COUNT), np.int64), np.empty((batch, CONTEXT_COUNT), np.int64)
+        query_doy, query_year = np.empty(batch, np.int64), np.empty(batch, np.int64)
         lonlat = np.empty((batch, 2), np.float64)
-        obs_dates[:, :, 0] = np.arange(-CONTEXT_COUNT, 0)
         for event_id in np.unique(event_ids):
             event = self.events[int(event_id)]
             idx = np.flatnonzero(event_ids == event_id)
@@ -129,12 +131,14 @@ class Sampler:
                 for step in np.unique(chosen[:, j]):
                     take = np.flatnonzero(chosen[:, j] == step)
                     obs[idx[take], j] = read_pixels(self.cache.get(event.images[int(step)]), rows[take], cols[take])
-                    obs_dates[idx[take], j, 1] = event.day_of_year(int(step))
+                    obs_doys[idx[take], j] = event.day_of_year(int(step))
+                    obs_years[idx[take], j] = event.year(int(step))
             for step in np.unique(targets):
                 take = np.flatnonzero(targets == step)
                 target[idx[take]] = read_pixels(self.cache.get(event.images[int(step)]), rows[take], cols[take])
-                query_date[idx[take], 1] = event.day_of_year(int(step))
+                query_doy[idx[take]] = event.day_of_year(int(step))
+                query_year[idx[take]] = event.year(int(step))
             lonlat[idx] = lonlat_for(event, rows, cols)
         return {k: torch.from_numpy(v) for k, v in
-                {"obs": l2_normalize(obs, False), "target": l2_normalize(target, False), "obs_dates": obs_dates,
-                 "query_date": query_date, "lonlat": lonlat}.items()}
+                {"obs": l2_normalize(obs, False), "target": l2_normalize(target, False), "obs_doys": obs_doys,
+                 "obs_years": obs_years, "query_doy": query_doy, "query_year": query_year, "lonlat": lonlat}.items()}

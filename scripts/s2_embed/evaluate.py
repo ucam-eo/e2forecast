@@ -23,12 +23,14 @@ from e2forecast.checkpoint import load_model
 from e2forecast.data import s2_embed
 from e2forecast.metrics import ForecastMetrics
 from e2forecast.model import conditions_from_doys as conditions
+from e2forecast.training import add_date_offset_arg
 from e2forecast.utils import repeat_batch, resolve_device
 
 
 def main(args: argparse.Namespace) -> None:
     device = resolve_device(args.device, tf32=True)
     model, checkpoint = load_model(args.checkpoint, device, "s2_embed")
+    date_offset = args.date_offset or checkpoint["date_offset"]
     data = s2_embed.SampleSet(s2_embed.Benchmark.from_root(args.data_root), "test", args.samples_limit, args.load_workers,
                               device if args.data_on_device else torch.device("cpu"))
     print(f"test: {data.count:,} samples from {data.patches} patches", flush=True)
@@ -44,7 +46,7 @@ def main(args: argparse.Namespace) -> None:
         for start in range(chunk_start, min(chunk_start + args.chunk, data.count), args.batch_size):
             batch = {k: v.to(device) for k, v in data.batch(start, min(start + args.batch_size,
                                                                        chunk_start + args.chunk)).items()}
-            cond = conditions(batch)
+            cond = conditions(batch, date_offset)
             mean, std = model.gaussian(**cond)
             repeated = {k: repeat_batch(v, args.samples) for k, v in cond.items()}
             ensemble = model.sample(args.flow_steps, generator, **repeated).view(args.samples, len(mean), -1)
@@ -55,7 +57,8 @@ def main(args: argparse.Namespace) -> None:
     total = ForecastMetrics()
     for sums in done.values():
         total.merge(sums)
-    summary = {"checkpoint": str(args.checkpoint), "epoch": checkpoint["epoch"], "ensemble_size": args.samples,
+    summary = {"checkpoint": str(args.checkpoint), "epoch": checkpoint["epoch"], "date_offset": date_offset,
+               "ensemble_size": args.samples,
                "flow_steps": args.flow_steps, **total.summary()}
     (args.output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
@@ -73,6 +76,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--chunk", type=int, default=5000)
     p.add_argument("--data-on-device", action="store_true", help="keep all test embeddings on the GPU (~3 GB)")
     p.add_argument("--load-workers", type=int, default=16)
+    add_date_offset_arg(p, training=False)
     p.add_argument("--device", default="auto")
     p.add_argument("--seed", type=int, default=84515)
     return p

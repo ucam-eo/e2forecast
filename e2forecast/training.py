@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 from .checkpoint import checkpoint_payload, load_checkpoint, save_atomic
-from .model import E2Forecast
+from .model import DATE_OFFSETS, DEFAULT_DATE_OFFSET, E2Forecast
 
 Validate = Callable[[E2Forecast], tuple[float, dict]]  # -> (selection score, lower is better; logged values)
 
@@ -52,6 +52,18 @@ def add_model_args(parser: argparse.ArgumentParser, *, heads: int = 4) -> None:
     parser.add_argument("--t-eps", type=float, default=0.05, help="clip on 1 - t in the x-to-velocity conversion")
     parser.add_argument("--rff-sigma", type=float, default=1.0, help="bandwidth of the location RFF encoding")
     parser.add_argument("--rff-seed", type=int, default=42)
+
+
+def add_date_offset_arg(parser: argparse.ArgumentParser, *, training: bool) -> None:
+    """``--date-offset``: r of the date encoding, year(query) - year(observation) or the observation order -C..-1.
+
+    Training stores the choice in the checkpoint; evaluation uses the checkpoint's value unless overridden.
+    """
+    if training:
+        parser.add_argument("--date-offset", choices=DATE_OFFSETS, default=DEFAULT_DATE_OFFSET,
+                            help="'year' for histories spanning several years, 'order' for histories within one year")
+    else:
+        parser.add_argument("--date-offset", choices=DATE_OFFSETS, help="override the checkpoint's date offset")
 
 
 def model_config_from_args(args: argparse.Namespace, embed_dim: int, context_count: int, query_date: str) -> dict:

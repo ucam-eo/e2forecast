@@ -233,7 +233,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--epochs", type=int, default=20_000)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--mlp-hidden", type=int, default=32)
-    p.add_argument("--mlp-layers", type=int, default=1)
+    p.add_argument("--mlp-layers", type=int, default=1,
+                   help="Linear(hidden, hidden)-ReLU blocks after the first hidden layer")
     p.add_argument("--log-interval", type=int, default=200)
     p.add_argument("--batch-size", type=int, default=3000)
     p.add_argument("--device", default="auto")

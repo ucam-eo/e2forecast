@@ -30,22 +30,24 @@ from torch import Tensor, nn
 from .location import GeoCLIPRFF
 
 QUERY_DATE_MODES = ("learned", "fixed", "none")
+DATE_OFFSETS = ("year", "order")
+DEFAULT_DATE_OFFSET = "year"  # used whenever a checkpoint or caller does not specify one
 
 
 # ------------------------------------------------------------------------------------------------ encodings
 def date_encoding(dates: Tensor, dim: int) -> Tensor:
-    """psi(tau): sine-cosine encoding of (relative observation order, day of year); no absolute year.
+    """psi(tau): sine-cosine encoding of (relative offset r, day of year); no absolute year.
 
-    ``dates`` is (N, 2): column 0 = order relative to the query date (-C..-1 for the context, 0 for the query),
+    ``dates`` is (N, 2): column 0 = offset r relative to the query date (see :func:`relative_dates`; 0 for the query),
     column 1 = day of year (1..366).
     """
     if dim % 4:
         raise ValueError("date encoding dimension must be divisible by four")
-    relative_order, day_of_year = dates[:, 0], dates[:, 1]
+    offset, day_of_year = dates[:, 0], dates[:, 1]
     frequency = torch.exp(torch.linspace(0, math.log(10000), dim // 4, device=dates.device, dtype=dates.dtype))
-    order_angle = relative_order[:, None] / frequency
+    offset_angle = offset[:, None] / frequency
     doy_angle = 2 * math.pi * (day_of_year[:, None] - 1.0) / 365.25 * frequency.sqrt()
-    return torch.cat((order_angle.sin(), order_angle.cos(), doy_angle.sin(), doy_angle.cos()), -1)
+    return torch.cat((offset_angle.sin(), offset_angle.cos(), doy_angle.sin(), doy_angle.cos()), -1)
 
 
 def day_of_year_encoding(day_of_year: Tensor, dim: int) -> Tensor:
@@ -66,18 +68,33 @@ def flow_time_encoding(flow_time: Tensor, dim: int) -> Tensor:
     return torch.cat((angle.sin(), angle.cos()), -1)
 
 
-def relative_dates(context_doys: Tensor, query_doy: Tensor) -> tuple[Tensor, Tensor]:
-    """(relative order, day of year) for C chronologically sorted observations (-C..-1) and the query date (0)."""
+def relative_dates(context_doys: Tensor, query_doy: Tensor, date_offset: str = DEFAULT_DATE_OFFSET,
+                   context_years: Tensor | None = None, query_year: Tensor | None = None) -> tuple[Tensor, Tensor]:
+    """(offset r, day of year) for C chronologically sorted observations and the query date (r = 0).
+
+    ``date_offset="year"`` : r = year(query) - year(observation), which needs ``context_years`` and ``query_year``
+    (default; histories spanning several years);
+    ``date_offset="order"``: r = -C..-1, the position of each observation (histories within one year).
+    """
     batch, count = context_doys.shape
-    order = torch.arange(-count, 0, device=context_doys.device, dtype=torch.float32).expand(batch, count)
-    obs_dates = torch.stack((order, context_doys.float()), dim=-1)
+    if date_offset == "order":
+        offset = torch.arange(-count, 0, device=context_doys.device, dtype=torch.float32).expand(batch, count)
+    elif date_offset == "year":
+        if context_years is None or query_year is None:
+            raise ValueError("date_offset='year' needs context_years and query_year")
+        offset = (query_year[:, None] - context_years).float()
+    else:
+        raise ValueError(f"date_offset must be one of {DATE_OFFSETS}")
+    obs_dates = torch.stack((offset, context_doys.float()), dim=-1)
     query_date = torch.stack((torch.zeros(batch, device=query_doy.device), query_doy.float()), dim=-1)
     return obs_dates, query_date
 
 
-def conditions_from_doys(batch: dict[str, Tensor]) -> dict[str, Tensor]:
-    """Batch with ``obs``, ``obs_doys``, ``query_doy``, ``lonlat`` -> keyword conditions of :class:`E2Forecast`."""
-    obs_dates, query_date = relative_dates(batch["obs_doys"], batch["query_doy"])
+def conditions_from_doys(batch: dict[str, Tensor], date_offset: str = DEFAULT_DATE_OFFSET) -> dict[str, Tensor]:
+    """Batch with ``obs``, ``obs_doys``, ``query_doy``, ``lonlat`` (and ``obs_years``, ``query_year`` for
+    ``date_offset="year"``) -> keyword conditions of :class:`E2Forecast`."""
+    obs_dates, query_date = relative_dates(batch["obs_doys"], batch["query_doy"], date_offset,
+                                           batch.get("obs_years"), batch.get("query_year"))
     return {"obs": batch["obs"], "obs_dates": obs_dates, "query_date": query_date, "lonlat": batch["lonlat"]}
 
 
@@ -139,7 +156,7 @@ class E2ForecastNetwork(nn.Module):
     def forward(self, lonlat: Tensor, noisy: Tensor, flow_time: Tensor, obs: Tensor | None = None,
                 obs_dates: Tensor | None = None, query_date: Tensor | None = None) -> tuple[Tensor, Tensor, Tensor]:
         """lonlat (B, 2) degrees; noisy z_t (B, D); flow_time t (B,); obs (B, C, D); obs_dates (B, C, 2);
-        query_date (B, 2) = (relative order, day of year).  Returns ``(z1_hat, mu, sigma)``."""
+        query_date (B, 2) = (0, day of year).  Returns ``(z1_hat, mu, sigma)``."""
         batch, dim = len(noisy), self.embed_dim
         tokens = [self.location_token(lonlat).to(noisy.dtype).unsqueeze(1)]
         if self.context_count:

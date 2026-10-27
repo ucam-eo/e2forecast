@@ -2,7 +2,8 @@
 """Convert a checkpoint written by the original research scripts into the release format (``e2forecast-v1``).
 
 The parameter names of :class:`e2forecast.model.E2ForecastNetwork` are unchanged, so the weights load strictly;
-optimizer state is dropped.
+optimizer state is dropped.  The original scripts encoded the observation order (-C..-1); the released S1/S2
+checkpoints keep ``date_offset="order"``, the released GSA checkpoint uses the year offset (``--date-offset``).
 
     python scripts/export_checkpoint.py --task s1_embed --source /path/to/ours_locenc/e2forecast_rff/latest.pt \
         --output checkpoints/s1_embed.pt
@@ -15,7 +16,7 @@ from pathlib import Path
 
 import torch
 
-from e2forecast.checkpoint import TASKS, checkpoint_payload, save_atomic
+from e2forecast.checkpoint import FORECAST_TASKS, TASKS, checkpoint_payload, save_atomic
 from e2forecast.model import build_model
 
 OBJECTIVE = ("E2Forecast: joint probability estimation (diagonal Gaussian NLL) and embedding generation "
@@ -47,19 +48,25 @@ def convert(task: str, legacy: dict) -> tuple[dict, dict]:
     return config, loss
 
 
+RELEASE_DATE_OFFSET = {"s1_embed": "order", "s2_embed": "order", "gsa": "year"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--task", choices=TASKS, required=True)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--date-offset", choices=("year", "order"), help="default: the release setting of the task")
     args = parser.parse_args()
     legacy = torch.load(args.source, map_location="cpu", weights_only=False)
     model_config, loss_config = convert(args.task, legacy)
     model = build_model(model_config, **loss_config)
     model.load_state_dict(legacy["model"])  # strict: every tensor name and shape must match
     epoch = int(legacy["epoch"]) + (1 if args.task == "gsa" else 0)  # the GSA script stored 0-based epochs
-    save_atomic(checkpoint_payload(model, args.task, model_config, epoch, source=str(args.source.resolve())),
-                args.output)
+    extra = {"source": str(args.source.resolve())}
+    if args.task in FORECAST_TASKS:
+        extra["date_offset"] = args.date_offset or RELEASE_DATE_OFFSET[args.task]
+    save_atomic(checkpoint_payload(model, args.task, model_config, epoch, **extra), args.output)
     print(f"{args.source} -> {args.output} (epoch {epoch}, "
           f"{sum(p.numel() for p in model.parameters()):,} parameters)")
 

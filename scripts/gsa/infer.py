@@ -28,6 +28,8 @@ import torch
 from e2forecast.anomaly import anomaly_scores, find_label, read_label, upsample_to
 from e2forecast.checkpoint import load_model
 from e2forecast.data import gsa
+from e2forecast.model import relative_dates
+from e2forecast.training import add_date_offset_arg
 from e2forecast.utils import l2_normalize, resolve_device
 
 DEFAULT_MANIFEST = Path(__file__).resolve().parents[2] / "data/gsa_manifest.json"
@@ -46,12 +48,14 @@ def save_turbo_png(path: Path, values: np.ndarray) -> None:
 
 
 @torch.no_grad()
-def event_maps(model, event: gsa.Event, cache: gsa.RasterCache, args, generator, device) -> dict[str, np.ndarray]:
+def event_maps(model, event: gsa.Event, cache: gsa.RasterCache, date_offset: str, args, generator,
+               device) -> dict[str, np.ndarray]:
     context_steps = range(len(event.images) - 1 - gsa.CONTEXT_COUNT, len(event.images) - 1)
     observed_step = len(event.images) - 1
-    obs_dates = torch.tensor([[order, event.day_of_year(step)] for order, step in
-                              zip(range(-gsa.CONTEXT_COUNT, 0), context_steps)], dtype=torch.float32, device=device)
-    query_date = torch.tensor([0, event.day_of_year(observed_step)], dtype=torch.float32, device=device)
+    as_tensor = lambda values: torch.tensor([values], device=device)  # noqa: E731
+    obs_dates, query_date = relative_dates(
+        as_tensor([event.day_of_year(s) for s in context_steps]), as_tensor(event.day_of_year(observed_step)),
+        date_offset, as_tensor([event.year(s) for s in context_steps]), as_tensor(event.year(observed_step)))
     total = event.height * event.width
     maps = {}
     for start in range(0, total, args.batch_size):
@@ -72,6 +76,7 @@ def event_maps(model, event: gsa.Event, cache: gsa.RasterCache, args, generator,
 def main(args: argparse.Namespace) -> None:
     device = resolve_device(args.device)
     model, checkpoint = load_model(args.checkpoint, device, "gsa")
+    date_offset = args.date_offset or checkpoint["date_offset"]
     events = gsa.load_manifest(args.manifest, args.embedding_root)
     if args.events:
         events = [e for e in events if e.name in set(args.events) or e.category in set(args.events)]
@@ -82,7 +87,7 @@ def main(args: argparse.Namespace) -> None:
         if (out_dir / "anomaly_e2forecast.npy").exists() and not args.overwrite:
             continue
         out_dir.mkdir(parents=True, exist_ok=True)
-        maps = event_maps(model, event, cache, args, generator, device)
+        maps = event_maps(model, event, cache, date_offset, args, generator, device)
         label_shape = read_label(find_label(args.label_root, event.name)).shape
         factor = label_shape[0] // event.height
         for name, native in maps.items():
@@ -93,7 +98,7 @@ def main(args: argparse.Namespace) -> None:
                 save_turbo_png(out_dir / f"anomaly_{name}.png", upsampled)
         (out_dir / "inference.json").write_text(json.dumps(
             {"event": event.name, "observed_date": event.dates[-1], "context_dates": event.dates[-4:-1],
-             "samples": args.samples, "flow_steps": args.flow_steps, "upsample_factor": factor,
+             "date_offset": date_offset, "samples": args.samples, "flow_steps": args.flow_steps, "upsample_factor": factor,
              "checkpoint": str(args.checkpoint), "epoch": checkpoint["epoch"]}, ensure_ascii=False, indent=2) + "\n")
         print(f"[{time.time() - started:7.0f}s] {number}/{len(events)} {event.name}", flush=True)
     cache.close()
@@ -112,6 +117,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=2048)
     p.add_argument("--save-png", action="store_true", help="also write turbo-coloured PNGs of the upsampled maps")
     p.add_argument("--overwrite", action="store_true")
+    add_date_offset_arg(p, training=False)
     p.add_argument("--device", default="auto")
     p.add_argument("--seed", type=int, default=84513)
     return p

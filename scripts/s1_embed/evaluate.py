@@ -22,12 +22,13 @@ from e2forecast.checkpoint import load_model
 from e2forecast.data import s1_embed
 from e2forecast.metrics import ForecastMetrics
 from e2forecast.model import conditions_from_doys as conditions
+from e2forecast.training import add_date_offset_arg
 from e2forecast.utils import repeat_batch, resolve_device
 
 
 @torch.no_grad()
-def evaluate_batch(model, batch, samples: int, steps: int, generator) -> tuple[torch.Tensor, ...]:
-    cond = conditions(batch)
+def evaluate_batch(model, batch, date_offset: str, samples: int, steps: int, generator) -> tuple[torch.Tensor, ...]:
+    cond = conditions(batch, date_offset)
     mean, std = model.gaussian(**cond)
     ensemble = None
     if samples:
@@ -40,6 +41,7 @@ def main(args: argparse.Namespace) -> None:
     device = resolve_device(args.device, tf32=True)
     model, checkpoint = load_model(args.checkpoint, device, "s1_embed")
     context_count = checkpoint["model_config"]["context_count"]
+    date_offset = args.date_offset or checkpoint["date_offset"]
     items = s1_embed.EvalItems(args.data_root / "config/test_config.json", args.data_root / "embeddings",
                                args.load_workers, args.items_per_site)
     generator = torch.Generator(device=device).manual_seed(args.seed)
@@ -55,7 +57,8 @@ def main(args: argparse.Namespace) -> None:
                 state_path.write_text(json.dumps(done, indent=1))
                 print(f"[{time.time() - started:7.0f}s] {len(done)}/{len(items.names)} {items.names[current]}", flush=True)
             current, metrics = i, ForecastMetrics()
-        metrics.update(*evaluate_batch(model, batch, args.samples, args.flow_steps, generator), batch["target"])
+        metrics.update(*evaluate_batch(model, batch, date_offset, args.samples, args.flow_steps, generator),
+                       batch["target"])
     if current is not None:
         done[items.names[current]] = metrics.sums
         state_path.write_text(json.dumps(done, indent=1))
@@ -63,6 +66,7 @@ def main(args: argparse.Namespace) -> None:
     for sums in done.values():
         total.merge(sums)
     summary = {"checkpoint": str(args.checkpoint), "epoch": checkpoint["epoch"], "context_count": context_count,
+               "date_offset": date_offset,
                "ensemble_size": args.samples, "flow_steps": args.flow_steps, "sites": len(done), **total.summary()}
     (args.output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
@@ -78,6 +82,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--flow-steps", type=int, default=10, help="S Euler steps per ensemble forecast")
     p.add_argument("--batch-size", type=int, default=4096)
     p.add_argument("--load-workers", type=int, default=16)
+    add_date_offset_arg(p, training=False)
     p.add_argument("--device", default="auto")
     p.add_argument("--seed", type=int, default=84513)
     return p

@@ -4,6 +4,7 @@ A checkpoint is a dict::
 
     {"format": "e2forecast-v1", "task": "s1_embed" | "s2_embed" | "gsa" | "inr" | "inr_date",
      "model_config": {...E2ForecastNetwork kwargs...}, "loss_config": {"nll_weight", "t_eps"},
+     "date_offset": "year" | "order" (forecasting tasks; "year" when absent),
      "model": state_dict, "epoch": int, "optimizer": state_dict (training checkpoints only), ...metadata}
 """
 
@@ -13,10 +14,11 @@ from pathlib import Path
 
 import torch
 
-from .model import E2Forecast, build_model
+from .model import DATE_OFFSETS, DEFAULT_DATE_OFFSET, E2Forecast, build_model
 
 FORMAT = "e2forecast-v1"
 TASKS = ("s1_embed", "s2_embed", "gsa", "inr", "inr_date")
+FORECAST_TASKS = ("s1_embed", "s2_embed", "gsa")
 HUB_REPO = "JingtaoLi/E2Forecast"
 
 
@@ -44,6 +46,10 @@ def load_checkpoint(path: Path, task: str | None = None) -> dict:
                          "scripts/export_checkpoint.py")
     if task is not None and checkpoint["task"] != task:
         raise ValueError(f"{path} is a '{checkpoint['task']}' checkpoint, expected '{task}'")
+    if checkpoint["task"] in FORECAST_TASKS:
+        checkpoint.setdefault("date_offset", DEFAULT_DATE_OFFSET)
+        if checkpoint["date_offset"] not in DATE_OFFSETS:
+            raise ValueError(f"{path}: date_offset must be one of {DATE_OFFSETS}")
     return checkpoint
 
 

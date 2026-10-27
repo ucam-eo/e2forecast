@@ -98,7 +98,9 @@ import torch
 from e2forecast import load_pretrained, relative_dates
 
 model, checkpoint = load_pretrained("s1_embed", torch.device("cuda"))  # or load_model("checkpoints/s1_embed.pt", ...)
-obs_dates, query_date = relative_dates(context_doys, query_doy)     # (B, C) and (B,) day of year
+obs_dates, query_date = relative_dates(context_doys, query_doy,   # (B, C) and (B,) day of year
+                                       checkpoint["date_offset"],  # "year" or "order", see below
+                                       context_years, query_year)  # (B, C) and (B,) calendar year
 conditions = dict(obs=context,                                      # (B, C, D) L2-normalised history
                   obs_dates=obs_dates, query_date=query_date,
                   lonlat=lonlat)                                    # (B, 2) degrees
@@ -109,15 +111,20 @@ ensemble = [model.sample(steps=10, **conditions) for _ in range(10)]  # J = 10 e
 
 ## 📦 Checkpoints
 
-| checkpoint | experiment | embedding | history |
-| --- | --- | --- | --- |
-| [`s1_embed.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/s1_embed.pt) | S1_Embed forecasting | OlmoEarth-nano, 128-D | 7 observations |
-| [`s2_embed.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/s2_embed.pt) | S2_Embed forecasting | Prithvi-EO-2.0-300M, 1024-D | 37 observations |
-| [`gsa.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/gsa.pt) | GSA anomaly change detection | OlmoEarth-nano, 128-D | 3 observations |
-| [`inr.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/inr.pt) | INR on S2-100K | SatCLIP, 256-D | none |
-| [`inr_date.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/inr_date.pt) | INR with query date on SSL4EO-S12 | SatCLIP, 256-D | none |
+| checkpoint | experiment | embedding | history | date offset |
+| --- | --- | --- | --- | --- |
+| [`s1_embed.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/s1_embed.pt) | S1_Embed forecasting | OlmoEarth-nano, 128-D | 7 observations | `order` |
+| [`s2_embed.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/s2_embed.pt) | S2_Embed forecasting | Prithvi-EO-2.0-300M, 1024-D | 37 observations | `order` |
+| [`gsa.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/gsa.pt) | GSA anomaly change detection | OlmoEarth-nano, 128-D | 3 observations | `year` |
+| [`inr.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/inr.pt) | INR on S2-100K | SatCLIP, 256-D | none | – |
+| [`inr_date.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/inr_date.pt) | INR with query date on SSL4EO-S12 | SatCLIP, 256-D | none | – |
 
 Every checkpoint stores its model configuration, so each script rebuilds the network from the file alone.
+
+**Date offset.** Each history date is encoded by its day of year and an offset `r` from the query date (`r = 0`):
+`year` uses `r = year(τ*) − year(τ)`, for histories that span several years; `order` uses the position of the
+observation, `r = −C, …, −1`, for histories within one year. A checkpoint stores its setting (`year` when absent);
+`--date-offset` sets it for training and overrides it for evaluation.
 
 ## 📥 Data
 
@@ -185,8 +192,8 @@ all 1,000,000 test items; S2_Embed uses the first 100,000 test samples.
 Training uses the paper settings by default:
 
 ```bash
-python scripts/s1_embed/train.py --data-root data/S1_Embed --output-dir runs/s1_embed   # 600 epochs, batch 256
-python scripts/s2_embed/train.py --data-root data/S2_Embed --output-dir runs/s2_embed   # 72 epochs, batch 64, 8 heads
+python scripts/s1_embed/train.py --data-root data/S1_Embed --output-dir runs/s1_embed --date-offset order   # 600 epochs, batch 256
+python scripts/s2_embed/train.py --data-root data/S2_Embed --output-dir runs/s2_embed --date-offset order   # 72 epochs, batch 64, 8 heads
 ```
 
 </details>
@@ -205,7 +212,8 @@ For every event, the last image is the observation and the three images before i
 holds `a² = min(‖(e−μ)/σ‖², min_j ‖(e−ê_j)/σ‖²)` with `J = S = 10`. It is computed on the 50 m embedding grid and
 bilinearly upsampled to the 10 m labels. Evaluation follows HyperFree / ESIA: false positives get weight 0.5 in the
 precision, one threshold is tuned per category, and event F₁ is averaged within each category and then over
-categories. Expected averages: recall 65.48, precision 48.84, F₁ 48.70.
+categories. The paper numbers (recall 65.48, precision 48.84, F₁ 48.70) use the observation order
+(`--date-offset order`); the released `gsa.pt` uses the year offset by default.
 
 The GSA embeddings are not released yet; `data/gsa_manifest.json` lists the 55 events.
 
@@ -226,8 +234,8 @@ python scripts/inr/plot_global_monthly.py --checkpoint checkpoints/inr_date.pt -
 ```
 
 The probe regresses each target from the normalised Gaussian mean at the sample's location. Splits are
-region-disjoint (30/10/60 % latitude or longitude bands with 0.25° guard gaps), and the probe is an MLP with one
-hidden layer of width 32. The probe-selection rule is the same as for every baseline in the paper (see
+region-disjoint (30/10/60 % latitude or longitude bands with 0.25° guard gaps), and the probe is an MLP (hidden width
+32). The probe-selection rule is the same as for every baseline in the paper (see
 `scripts/inr/downstream.py`). The probe data goes in `data/downstream/` (see [Data](#-data)).
 
 | population | elevation | temperature | house value | income | **average** |

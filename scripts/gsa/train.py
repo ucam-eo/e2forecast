@@ -14,8 +14,9 @@ import argparse
 from pathlib import Path
 
 from e2forecast.data import gsa
-from e2forecast.model import build_model
-from e2forecast.training import add_model_args, add_optimisation_args, fit, model_config_from_args
+from e2forecast.model import build_model, conditions_from_doys as conditions
+from e2forecast.training import (add_date_offset_arg, add_model_args, add_optimisation_args, fit,
+                                 model_config_from_args)
 from e2forecast.utils import resolve_device, seed_everything
 
 DEFAULT_MANIFEST = Path(__file__).resolve().parents[2] / "data/gsa_manifest.json"
@@ -32,11 +33,12 @@ def main(args: argparse.Namespace) -> None:
 
     def epoch_batches():
         for _ in range(args.steps_per_epoch):
-            yield sampler.sample(args.batch_size)
+            batch = sampler.sample(args.batch_size)
+            yield {"target": batch["target"], **conditions(batch, args.date_offset)}
 
     try:
         fit(model, args, task="gsa", model_config=model_config, device=device, epoch_batches=epoch_batches,
-            metadata={"training_events": len(sampler.events)})
+            metadata={"training_events": len(sampler.events), "date_offset": args.date_offset})
     finally:
         sampler.cache.close()
 
@@ -48,6 +50,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--events-per-batch", type=int, default=8)
     add_optimisation_args(p, epochs=300, batch_size=256)
     add_model_args(p, heads=4)
+    add_date_offset_arg(p, training=True)
     return p
 
 

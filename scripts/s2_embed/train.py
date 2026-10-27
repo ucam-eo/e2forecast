@@ -15,7 +15,8 @@ from pathlib import Path
 from e2forecast.data import s2_embed
 from e2forecast.metrics import ForecastMetrics
 from e2forecast.model import build_model, conditions_from_doys as conditions
-from e2forecast.training import add_model_args, add_optimisation_args, fit, model_config_from_args
+from e2forecast.training import (add_date_offset_arg, add_model_args, add_optimisation_args, fit,
+                                 model_config_from_args)
 from e2forecast.utils import resolve_device, seed_everything
 
 
@@ -30,7 +31,7 @@ def main(args: argparse.Namespace) -> None:
     def epoch_batches():
         for _ in range(args.steps_per_epoch):
             batch = bank.sample(args.batch_size)
-            yield {"target": batch["target"], **conditions(batch)}
+            yield {"target": batch["target"], **conditions(batch, args.date_offset)}
 
     validate_enabled = args.val_samples >= 0
     if validate_enabled:
@@ -40,13 +41,13 @@ def main(args: argparse.Namespace) -> None:
             metrics = ForecastMetrics()
             for start in range(0, val.count, args.val_batch_size):
                 batch = {k: v.to(device) for k, v in val.batch(start, start + args.val_batch_size).items()}
-                mean, std = m.gaussian(**conditions(batch))
+                mean, std = m.gaussian(**conditions(batch, args.date_offset))
                 metrics.update(mean, std, None, batch["target"])
             point = metrics.summary()["point_cosine_distance"]
             return point, {"val_point_cosine_distance": point}
 
     fit(model, args, task="s2_embed", model_config=model_config, device=device, epoch_batches=epoch_batches,
-        validate=score_validation if validate_enabled else None, metadata={"data": bank.summary})
+        validate=score_validation if validate_enabled else None, metadata={"data": bank.summary, "date_offset": args.date_offset})
 
 
 def parser() -> argparse.ArgumentParser:
@@ -60,6 +61,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--val-batch-size", type=int, default=1024)
     add_optimisation_args(p, epochs=72, batch_size=64)
     add_model_args(p, heads=8)
+    add_date_offset_arg(p, training=True)
     return p
 
 

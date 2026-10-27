@@ -92,6 +92,7 @@ class Site:
     def __init__(self, name: str, scenes: list[Scene], values: np.ndarray, lonlat: np.ndarray) -> None:
         self.name, self.scenes, self.values, self.lonlat = name, scenes, values, lonlat  # values: (T, P, 128) fp16
         self.doys = np.array([s.day_of_year for s in scenes], dtype=np.int64)
+        self.years = np.array([int(s.datetime[:4]) for s in scenes], dtype=np.int64)
 
 
 class TrainBank:
@@ -130,19 +131,21 @@ class TrainBank:
         """Site uniform; target uniform among scenes >= C; C random earlier scenes; pixel uniform."""
         C = self.context_count
         obs = np.empty((batch_size, C, EMBED_DIM), np.float32)
-        obs_doys = np.empty((batch_size, C), np.int64)
+        obs_doys, obs_years = np.empty((batch_size, C), np.int64), np.empty((batch_size, C), np.int64)
         target = np.empty((batch_size, EMBED_DIM), np.float32)
-        query_doy = np.empty(batch_size, np.int64)
+        query_doy, query_year = np.empty(batch_size, np.int64), np.empty(batch_size, np.int64)
         lonlat = np.empty((batch_size, 2), np.float64)
         for row in range(batch_size):
             site = self.sites[int(self.rng.integers(len(self.sites)))]
             t = int(self.rng.integers(C, len(site.scenes)))
             chosen = np.sort(self.rng.choice(t, C, replace=False))
             p = int(self.rng.integers(site.values.shape[1]))
-            obs[row], obs_doys[row] = site.values[chosen, p], site.doys[chosen]
-            target[row], query_doy[row], lonlat[row] = site.values[t, p], site.doys[t], site.lonlat[p]
+            obs[row], obs_doys[row], obs_years[row] = site.values[chosen, p], site.doys[chosen], site.years[chosen]
+            target[row], query_doy[row], query_year[row] = site.values[t, p], site.doys[t], site.years[t]
+            lonlat[row] = site.lonlat[p]
         return {k: torch.from_numpy(v) for k, v in
-                {"obs": obs, "obs_doys": obs_doys, "target": target, "query_doy": query_doy, "lonlat": lonlat}.items()}
+                {"obs": obs, "obs_doys": obs_doys, "obs_years": obs_years, "target": target, "query_doy": query_doy,
+                 "query_year": query_year, "lonlat": lonlat}.items()}
 
 
 class EvalItems:
@@ -174,11 +177,12 @@ class EvalItems:
         grid = site["grid"]
         lonlat = pixel_lonlat(grid["crs"], rasterio.Affine(*grid["transform"]), grid["width"], used)
         return {"values": torch.from_numpy(values).to(device), "lonlat": torch.from_numpy(lonlat).to(device),
-                "doys": torch.tensor([s["day_of_year"] for s in site["scenes"]], device=device), "used": used}
+                "doys": torch.tensor([s["day_of_year"] for s in site["scenes"]], device=device),
+                "years": torch.tensor([int(s["datetime"][:4]) for s in site["scenes"]], device=device), "used": used}
 
     def batches(self, context_count: int, batch_size: int, device: torch.device,
                 sites: list[int] | None = None) -> Iterator[tuple[int, dict[str, torch.Tensor]]]:
-        """Yield (site index, batch) with keys obs, obs_doys, query_doy, lonlat, target."""
+        """Yield (site index, batch) with keys obs, obs_doys, obs_years, query_doy, query_year, lonlat, target."""
         if not 1 <= context_count <= self.max_context:
             raise ValueError(f"context length must be in 1..{self.max_context}")
         for i in (range(len(self.names)) if sites is None else sites):
@@ -186,9 +190,10 @@ class EvalItems:
             local = torch.from_numpy(np.searchsorted(data["used"], items["pixel"])).to(device)
             target = torch.from_numpy(items["target"]).to(device)
             context = torch.from_numpy(items["context"][:, -context_count:]).to(device)
-            values, doys = data["values"], data["doys"]
+            values, doys, years = data["values"], data["doys"], data["years"]
             for start in range(0, len(local), batch_size):
                 px, tg, cx = (x[start:start + batch_size] for x in (local, target, context))
-                yield i, {"obs": values[cx, px[:, None]].float(), "obs_doys": doys[cx], "query_doy": doys[tg],
+                yield i, {"obs": values[cx, px[:, None]].float(), "obs_doys": doys[cx], "obs_years": years[cx],
+                          "query_doy": doys[tg], "query_year": years[tg],
                           "lonlat": data["lonlat"][px], "target": values[tg, px].float()}
             del data, values

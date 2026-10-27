@@ -15,7 +15,8 @@ from pathlib import Path
 from e2forecast.data import s1_embed
 from e2forecast.metrics import ForecastMetrics
 from e2forecast.model import build_model, conditions_from_doys as conditions
-from e2forecast.training import add_model_args, add_optimisation_args, fit, model_config_from_args
+from e2forecast.training import (add_date_offset_arg, add_model_args, add_optimisation_args, fit,
+                                 model_config_from_args)
 from e2forecast.utils import resolve_device, seed_everything
 
 
@@ -31,7 +32,7 @@ def main(args: argparse.Namespace) -> None:
     def epoch_batches():
         for _ in range(args.steps_per_epoch):
             batch = bank.sample(args.batch_size)
-            yield {"target": batch["target"], **conditions(batch)}
+            yield {"target": batch["target"], **conditions(batch, args.date_offset)}
 
     validate_enabled = args.val_items_per_site > 0
     if validate_enabled:  # optional: mean 1 - cos(mu, e*) on the fixed 2025 validation items
@@ -41,13 +42,13 @@ def main(args: argparse.Namespace) -> None:
         def score_validation(m):
             metrics = ForecastMetrics()
             for _, batch in val.batches(args.context_count, 2048, device):
-                mean, std = m.gaussian(**conditions(batch))
+                mean, std = m.gaussian(**conditions(batch, args.date_offset))
                 metrics.update(mean, std, None, batch["target"])
             point = metrics.summary()["point_cosine_distance"]
             return point, {"val_point_cosine_distance": point}
 
     fit(model, args, task="s1_embed", model_config=model_config, device=device, epoch_batches=epoch_batches,
-        validate=score_validation if validate_enabled else None, metadata={"data": bank.summary})
+        validate=score_validation if validate_enabled else None, metadata={"data": bank.summary, "date_offset": args.date_offset})
 
 
 def parser() -> argparse.ArgumentParser:
@@ -61,6 +62,7 @@ def parser() -> argparse.ArgumentParser:
                    help="validate every epoch on this many 2025 items per validation site (0 = no validation)")
     add_optimisation_args(p, epochs=600, batch_size=256)
     add_model_args(p, heads=4)
+    add_date_offset_arg(p, training=True)
     return p
 
 

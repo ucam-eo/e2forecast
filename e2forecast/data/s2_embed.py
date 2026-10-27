@@ -67,6 +67,7 @@ class Patch:
         self.name = name
         self.values = l2_normalize(raw.reshape(len(raw), GRID * GRID, EMBED_DIM)).astype(np.float16)  # (T, 64, D)
         self.doys = np.array([d.timetuple().tm_yday for d in meta["dates"]], dtype=np.int64)
+        self.years = np.array([d.year for d in meta["dates"]], dtype=np.int64)
         self.lonlat = token_lonlat(meta["corners"])
 
 
@@ -118,19 +119,21 @@ class TrainBank:
         """Patch uniform; target date uniform among dates >= C; C random earlier dates; token uniform."""
         C = self.context_count
         obs = np.empty((batch_size, C, EMBED_DIM), np.float32)
-        obs_doys = np.empty((batch_size, C), np.int64)
+        obs_doys, obs_years = np.empty((batch_size, C), np.int64), np.empty((batch_size, C), np.int64)
         target = np.empty((batch_size, EMBED_DIM), np.float32)
-        query_doy = np.empty(batch_size, np.int64)
+        query_doy, query_year = np.empty(batch_size, np.int64), np.empty(batch_size, np.int64)
         lonlat = np.empty((batch_size, 2), np.float64)
         for row in range(batch_size):
             patch = self.patches[int(self.rng.integers(len(self.patches)))]
             t = int(self.rng.integers(C, len(patch.values)))
             chosen = np.sort(self.rng.choice(t, C, replace=False))
             p = int(self.rng.integers(GRID * GRID))
-            obs[row], obs_doys[row] = patch.values[chosen, p], patch.doys[chosen]
-            target[row], query_doy[row], lonlat[row] = patch.values[t, p], patch.doys[t], patch.lonlat[p]
+            obs[row], obs_doys[row], obs_years[row] = patch.values[chosen, p], patch.doys[chosen], patch.years[chosen]
+            target[row], query_doy[row], query_year[row] = patch.values[t, p], patch.doys[t], patch.years[t]
+            lonlat[row] = patch.lonlat[p]
         return {k: torch.from_numpy(v) for k, v in
-                {"obs": obs, "obs_doys": obs_doys, "target": target, "query_doy": query_doy, "lonlat": lonlat}.items()}
+                {"obs": obs, "obs_doys": obs_doys, "obs_years": obs_years, "target": target, "query_doy": query_doy,
+                 "query_year": query_year, "lonlat": lonlat}.items()}
 
 
 class SampleSet:
@@ -153,6 +156,7 @@ class SampleSet:
         to = lambda a: torch.from_numpy(np.ascontiguousarray(a)).to(device)  # noqa: E731
         self.values = to(np.concatenate([p.values for p in patches]))  # (all dates, 64, D) fp16
         self.doys = to(np.concatenate([p.doys for p in patches]))
+        self.years = to(np.concatenate([p.years for p in patches]))
         self.lonlat = to(np.stack([p.lonlat for p in patches]))  # (P, 64, 2)
         self.row, self.offset = to(row), to(offsets[row])
         self.token, self.target, self.context = to(arrays["token"][:n].astype(np.int64)), to(target), to(context)
@@ -163,5 +167,6 @@ class SampleSet:
         target = self.offset[start:stop] + self.target[start:stop]
         token = self.token[start:stop]
         return {"obs": self.values[context, token[:, None]].float(), "obs_doys": self.doys[context],
-                "query_doy": self.doys[target], "lonlat": self.lonlat[self.row[start:stop], token],
+                "obs_years": self.years[context], "query_doy": self.doys[target], "query_year": self.years[target],
+                "lonlat": self.lonlat[self.row[start:stop], token],
                 "target": self.values[target, token].float()}
