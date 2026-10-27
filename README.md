@@ -95,9 +95,9 @@ hf download JingtaoLi/E2Forecast --local-dir checkpoints     # 5 checkpoints, ~0
 
 ```python
 import torch
-from e2forecast import load_model, relative_dates
+from e2forecast import load_pretrained, relative_dates
 
-model, checkpoint = load_model("checkpoints/s1_embed.pt", torch.device("cuda"))
+model, checkpoint = load_pretrained("s1_embed", torch.device("cuda"))  # or load_model("checkpoints/s1_embed.pt", ...)
 obs_dates, query_date = relative_dates(context_doys, query_doy)     # (B, C) and (B,) day of year
 conditions = dict(obs=context,                                      # (B, C, D) L2-normalised history
                   obs_dates=obs_dates, query_date=query_date,

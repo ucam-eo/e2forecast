@@ -17,6 +17,7 @@ from .model import E2Forecast, build_model
 
 FORMAT = "e2forecast-v1"
 TASKS = ("s1_embed", "s2_embed", "gsa", "inr", "inr_date")
+HUB_REPO = "JingtaoLi/E2Forecast"
 
 
 def save_atomic(payload: dict, path: Path) -> None:
@@ -52,3 +53,17 @@ def load_model(path: Path, device: torch.device, task: str | None = None) -> tup
     model = build_model(checkpoint["model_config"], **checkpoint["loss_config"])
     model.load_state_dict(checkpoint["model"])
     return model.to(device).eval(), checkpoint
+
+
+def load_pretrained(task: str, device: torch.device, repo_id: str = HUB_REPO,
+                    revision: str | None = None) -> tuple[E2Forecast, dict]:
+    """Download ``<task>.pt`` from the HuggingFace Hub (cached) and load it with :func:`load_model`.
+
+    ``config.json`` is fetched first: the Hub counts model downloads by requests to that file.
+    """
+    if task not in TASKS:
+        raise ValueError(f"task must be one of {TASKS}")
+    from huggingface_hub import hf_hub_download
+
+    hf_hub_download(repo_id, "config.json", revision=revision)
+    return load_model(Path(hf_hub_download(repo_id, f"{task}.pt", revision=revision)), device, task)

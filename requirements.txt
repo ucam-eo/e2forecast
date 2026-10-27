@@ -1,5 +1,6 @@
 # torch is installed separately to match the local CUDA version (tested with torch 2.7.1)
 numpy>=1.24
+huggingface_hub>=0.24
 rasterio>=1.3
 pyproj>=3.5
 webdataset>=0.2.86
