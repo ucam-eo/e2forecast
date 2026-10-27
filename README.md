@@ -12,7 +12,7 @@
 [![Code](https://img.shields.io/badge/GitHub-ucam--eo%2Fe2forecast-181717?logo=github)](https://github.com/ucam-eo/e2forecast)
 [![Models](https://img.shields.io/badge/%F0%9F%A4%97%20Models-E2Forecast-ffcc4d)](https://huggingface.co/JingtaoLi/E2Forecast)
 [![Data](https://img.shields.io/badge/%F0%9F%A4%97%20Data-E2Forecast--data-ffcc4d)](https://huggingface.co/datasets/JingtaoLi/E2Forecast-data)
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <img src="assets/cambridge_2025.gif" width="560" alt="E2Forecast forecasts of Cambridge through 2025 next to the observed embeddings">
 
@@ -263,8 +263,9 @@ assets/                     README figures
 
 ## 📜 License
 
-Code, checkpoints and data are released under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/):
-free for research and other non-commercial use, with attribution.
+The code is released under the [MIT License](LICENSE). The checkpoints and data on HuggingFace are released under
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/): free for research and other non-commercial use,
+with attribution.
 
 ## 📝 Citation
 
