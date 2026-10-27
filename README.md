@@ -2,7 +2,7 @@
 
 # E²Forecast
 
-### Forecasting Earth's Surface in Embedding Space
+### Forecasting Earth Surface Change in Embedding Space
 
 **Jingtao Li**<sup>1</sup> · **Sadiq Jaffer**<sup>1</sup> · **Anil Madhavapeddy**<sup>1</sup> · **Pedro Sousa**<sup>1</sup> · **Anthony Ortiz**<sup>2</sup><br>
 **Kyle Gao**<sup>3</sup> · **Zhengpeng Feng**<sup>1</sup> · **Yanfei Zhong**<sup>4</sup> · **Srinivasan Keshav**<sup>1</sup>
@@ -270,7 +270,7 @@ free for research and other non-commercial use, with attribution.
 
 ```bibtex
 @article{li2026e2forecast,
-  title  = {Forecasting Earth's Surface in Embedding Space},
+  title  = {Forecasting Earth Surface Change in Embedding Space},
   author = {Li, Jingtao and Jaffer, Sadiq and Madhavapeddy, Anil and Sousa, Pedro and Ortiz, Anthony and
             Gao, Kyle and Feng, Zhengpeng and Zhong, Yanfei and Keshav, Srinivasan},
   year   = {2026}
