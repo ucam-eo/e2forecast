@@ -61,7 +61,7 @@ def add_date_offset_arg(parser: argparse.ArgumentParser, *, training: bool) -> N
     """
     if training:
         parser.add_argument("--date-offset", choices=DATE_OFFSETS, default=DEFAULT_DATE_OFFSET,
-                            help="'year' for histories spanning several years, 'order' for histories within one year")
+                            help="'order' for histories within one year, 'year' for histories spanning several years")
     else:
         parser.add_argument("--date-offset", choices=DATE_OFFSETS, help="override the checkpoint's date offset")
 

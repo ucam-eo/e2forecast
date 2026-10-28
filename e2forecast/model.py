@@ -30,8 +30,8 @@ from torch import Tensor, nn
 from .location import GeoCLIPRFF
 
 QUERY_DATE_MODES = ("learned", "fixed", "none")
-DATE_OFFSETS = ("year", "order")
-DEFAULT_DATE_OFFSET = "year"  # used whenever a checkpoint or caller does not specify one
+DATE_OFFSETS = ("order", "year")
+DEFAULT_DATE_OFFSET = "order"  # used whenever a checkpoint or caller does not specify one
 
 
 # ------------------------------------------------------------------------------------------------ encodings
@@ -72,9 +72,9 @@ def relative_dates(context_doys: Tensor, query_doy: Tensor, date_offset: str = D
                    context_years: Tensor | None = None, query_year: Tensor | None = None) -> tuple[Tensor, Tensor]:
     """(offset r, day of year) for C chronologically sorted observations and the query date (r = 0).
 
+    ``date_offset="order"``: r = -C..-1, the position of each observation (default; histories within one year);
     ``date_offset="year"`` : r = year(query) - year(observation), which needs ``context_years`` and ``query_year``
-    (default; histories spanning several years);
-    ``date_offset="order"``: r = -C..-1, the position of each observation (histories within one year).
+    (histories spanning several years).
     """
     batch, count = context_doys.shape
     if date_offset == "order":

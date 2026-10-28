@@ -56,7 +56,7 @@ def main() -> None:
     parser.add_argument("--task", choices=TASKS, required=True)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--date-offset", choices=("year", "order"), help="default: the release setting of the task")
+    parser.add_argument("--date-offset", choices=("order", "year"), help="default: the release setting of the task")
     args = parser.parse_args()
     legacy = torch.load(args.source, map_location="cpu", weights_only=False)
     model_config, loss_config = convert(args.task, legacy)

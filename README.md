@@ -99,7 +99,7 @@ from e2forecast import load_pretrained, relative_dates
 
 model, checkpoint = load_pretrained("s1_embed", torch.device("cuda"))  # or load_model("checkpoints/s1_embed.pt", ...)
 obs_dates, query_date = relative_dates(context_doys, query_doy,   # (B, C) and (B,) day of year
-                                       checkpoint["date_offset"],  # "year" or "order", see below
+                                       checkpoint["date_offset"],  # "order" or "year", see below
                                        context_years, query_year)  # (B, C) and (B,) calendar year
 conditions = dict(obs=context,                                      # (B, C, D) L2-normalised history
                   obs_dates=obs_dates, query_date=query_date,
@@ -122,8 +122,8 @@ ensemble = [model.sample(steps=10, **conditions) for _ in range(10)]  # J = 10 e
 Every checkpoint stores its model configuration, so each script rebuilds the network from the file alone.
 
 **Date offset.** Each history date is encoded by its day of year and an offset `r` from the query date (`r = 0`):
-`year` uses `r = year(τ*) − year(τ)`, for histories that span several years; `order` uses the position of the
-observation, `r = −C, …, −1`, for histories within one year. A checkpoint stores its setting (`year` when absent);
+`order` uses the position of the observation, `r = −C, …, −1`, for histories within one year; `year` uses
+`r = year(τ*) − year(τ)`, for histories that span several years. A checkpoint stores its setting (`order` when absent);
 `--date-offset` sets it for training and overrides it for evaluation.
 
 ## 📥 Data
@@ -192,8 +192,8 @@ all 1,000,000 test items; S2_Embed uses the first 100,000 test samples.
 Training uses the paper settings by default:
 
 ```bash
-python scripts/s1_embed/train.py --data-root data/S1_Embed --output-dir runs/s1_embed --date-offset order   # 600 epochs, batch 256
-python scripts/s2_embed/train.py --data-root data/S2_Embed --output-dir runs/s2_embed --date-offset order   # 72 epochs, batch 64, 8 heads
+python scripts/s1_embed/train.py --data-root data/S1_Embed --output-dir runs/s1_embed   # 600 epochs, batch 256
+python scripts/s2_embed/train.py --data-root data/S2_Embed --output-dir runs/s2_embed   # 72 epochs, batch 64, 8 heads
 ```
 
 </details>
@@ -202,7 +202,7 @@ python scripts/s2_embed/train.py --data-root data/S2_Embed --output-dir runs/s2_
 <summary><b>Anomaly change detection on GSA</b></summary>
 
 ```bash
-python scripts/gsa/train.py --embedding-root data/GSA/embeddings_patch5 --output-dir runs/gsa --date-offset order
+python scripts/gsa/train.py --embedding-root data/GSA/embeddings_patch5 --output-dir runs/gsa
 python scripts/gsa/infer.py --checkpoint checkpoints/gsa.pt --embedding-root data/GSA/embeddings_patch5 \
     --label-root data/GSA/original --output-dir results/gsa
 python scripts/gsa/evaluate.py --results-root results/gsa --label-root data/GSA/original

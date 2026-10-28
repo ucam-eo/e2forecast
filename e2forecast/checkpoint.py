@@ -4,7 +4,7 @@ A checkpoint is a dict::
 
     {"format": "e2forecast-v1", "task": "s1_embed" | "s2_embed" | "gsa" | "inr" | "inr_date",
      "model_config": {...E2ForecastNetwork kwargs...}, "loss_config": {"nll_weight", "t_eps"},
-     "date_offset": "year" | "order" (forecasting tasks; "year" when absent),
+     "date_offset": "order" | "year" (forecasting tasks; "order" when absent),
      "model": state_dict, "epoch": int, "optimizer": state_dict (training checkpoints only), ...metadata}
 """
 
