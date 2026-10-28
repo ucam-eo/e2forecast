@@ -2,8 +2,8 @@
 """Convert a checkpoint written by the original research scripts into the release format (``e2forecast-v1``).
 
 The parameter names of :class:`e2forecast.model.E2ForecastNetwork` are unchanged, so the weights load strictly;
-optimizer state is dropped.  The original scripts encoded the observation order (-C..-1); the released S1/S2
-checkpoints keep ``date_offset="order"``, the released GSA checkpoint uses the year offset (``--date-offset``).
+optimizer state is dropped.  The original scripts encoded the observation order (-C..-1), so the released
+checkpoints keep ``date_offset="order"`` (``--date-offset`` overrides it).
 
     python scripts/export_checkpoint.py --task s1_embed --source /path/to/ours_locenc/e2forecast_rff/latest.pt \
         --output checkpoints/s1_embed.pt
@@ -48,7 +48,7 @@ def convert(task: str, legacy: dict) -> tuple[dict, dict]:
     return config, loss
 
 
-RELEASE_DATE_OFFSET = {"s1_embed": "order", "s2_embed": "order", "gsa": "year"}
+RELEASE_DATE_OFFSET = {"s1_embed": "order", "s2_embed": "order", "gsa": "order"}
 
 
 def main() -> None:

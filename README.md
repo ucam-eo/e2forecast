@@ -115,7 +115,7 @@ ensemble = [model.sample(steps=10, **conditions) for _ in range(10)]  # J = 10 e
 | --- | --- | --- | --- | --- |
 | [`s1_embed.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/s1_embed.pt) | S1_Embed forecasting | OlmoEarth-nano, 128-D | 7 observations | `order` |
 | [`s2_embed.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/s2_embed.pt) | S2_Embed forecasting | Prithvi-EO-2.0-300M, 1024-D | 37 observations | `order` |
-| [`gsa.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/gsa.pt) | GSA anomaly change detection | OlmoEarth-nano, 128-D | 3 observations | `year` |
+| [`gsa.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/gsa.pt) | GSA anomaly change detection | OlmoEarth-nano, 128-D | 3 observations | `order` |
 | [`inr.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/inr.pt) | INR on S2-100K | SatCLIP, 256-D | none | – |
 | [`inr_date.pt`](https://huggingface.co/JingtaoLi/E2Forecast/resolve/main/inr_date.pt) | INR with query date on SSL4EO-S12 | SatCLIP, 256-D | none | – |
 
@@ -202,7 +202,7 @@ python scripts/s2_embed/train.py --data-root data/S2_Embed --output-dir runs/s2_
 <summary><b>Anomaly change detection on GSA</b></summary>
 
 ```bash
-python scripts/gsa/train.py --embedding-root data/GSA/embeddings_patch5 --output-dir runs/gsa
+python scripts/gsa/train.py --embedding-root data/GSA/embeddings_patch5 --output-dir runs/gsa --date-offset order
 python scripts/gsa/infer.py --checkpoint checkpoints/gsa.pt --embedding-root data/GSA/embeddings_patch5 \
     --label-root data/GSA/original --output-dir results/gsa
 python scripts/gsa/evaluate.py --results-root results/gsa --label-root data/GSA/original
@@ -212,8 +212,7 @@ For every event, the last image is the observation and the three images before i
 holds `a² = min(‖(e−μ)/σ‖², min_j ‖(e−ê_j)/σ‖²)` with `J = S = 10`. It is computed on the 50 m embedding grid and
 bilinearly upsampled to the 10 m labels. Evaluation follows HyperFree / ESIA: false positives get weight 0.5 in the
 precision, one threshold is tuned per category, and event F₁ is averaged within each category and then over
-categories. The paper numbers (recall 65.48, precision 48.84, F₁ 48.70) use the observation order
-(`--date-offset order`); the released `gsa.pt` uses the year offset by default.
+categories. Expected averages: recall 65.48, precision 48.84, F₁ 48.70.
 
 The GSA embeddings are not released yet; `data/gsa_manifest.json` lists the 55 events.
 
